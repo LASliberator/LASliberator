@@ -1,7 +1,7 @@
 lasliberate
 ===========
 
-a simple DOS command-line tool to free LiDAR locked-up in ESRI's "LAZ clone"
+a simple command-line tool to free LiDAR locked-up in ESRI's "LAZ clone"
 
 usage:
 lasliberate locked_up.zlas set_free.las
