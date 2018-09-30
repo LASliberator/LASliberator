@@ -15,7 +15,7 @@
 
   COPYRIGHT:
 
-    (c) 2015, martin isenburg, rapidlasso - fast tools to catch reality
+    (c) 2015-2018, martin isenburg, rapidlasso - fast tools to catch reality
 
     This is free software; you can redistribute and/or modify it under the
     terms of the GNU Lesser General Licence as published by the Free Software
@@ -26,7 +26,8 @@
 
   CHANGE HISTORY:
 
-    see header file
+	25 September 2018 -- updated for compressing LAS 1.4 content
+	 3 April 2015 -- created to free LiDAR enslaved in ESRI's "LAZ clone"
 
 ===============================================================================
 */
@@ -41,7 +42,17 @@
 
 // Includes for the liberating open source LASzip compressor
 
-#include "laszip_dll.h"
+#include "laszip_api.h"
+
+typedef struct laszip_evlr
+{
+	laszip_U16 reserved;
+	laszip_CHAR user_id[16];
+	laszip_U16 record_id;
+	laszip_I64 record_length_after_header;
+	laszip_CHAR description[32];
+	laszip_U8* data;
+} laszip_evlr_struct;
 
 // Conversion macros
 
@@ -87,7 +98,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	HRESULT hr = EzLasObjectFactory::CreateObject(EzLasOID_Reader, EzLasIID_Reader, (void**)&pLAZcloneReader);
 	if (FAILED(hr))
 	{
-		fwprintf(stderr, L"Failed to create ESRI's proprietary lock-in format reader.\n");
+		fprintf(stderr, "Failed to create ESRI's proprietary lock-in format reader.\n");
 		return hr;
 	}
 
@@ -118,7 +129,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 
 	if (laszip_load_dll())
 	{
-		fwprintf(stderr, L"Cannot load liberating DLL. is DLL not in path? missing LASzip.dll? wrong DLL?\n");
+		fprintf(stderr, "Cannot load liberating DLL. is DLL not in path? missing LASzip.dll? wrong DLL?\n");
 		pLAZcloneReader->Release();
 		return 1;
 	}
@@ -129,7 +140,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	if (laszip_create(&freedomWriter))
 	{
 		reportLASzipError(freedomWriter);
-		fwprintf(stderr, L"Cannot create writer to set LiDAR data free\n");
+		fprintf(stderr, "Cannot create writer to set LiDAR data free\n");
 		return 1;
 	}
 
@@ -156,8 +167,16 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	liberatedHeader.number_of_variable_length_records = imprisonedHeader.numberOfVLRs;
 	liberatedHeader.point_data_format = imprisonedHeader.pointDataFormatID;
 	liberatedHeader.point_data_record_length = imprisonedHeader.pointDataRecordLength;
-	liberatedHeader.number_of_point_records = imprisonedHeader.numberOfPointRecords1_3;
-	for (i = 0; i < 5; i++) liberatedHeader.number_of_points_by_return[i] = imprisonedHeader.numberOfPointsByReturn1_3[i];
+	if (liberatedHeader.point_data_format > 5)
+	{
+		liberatedHeader.number_of_point_records = 0;
+		for (i = 0; i < 5; i++) liberatedHeader.number_of_points_by_return[i] = 0;
+	}
+	else
+	{
+		liberatedHeader.number_of_point_records = imprisonedHeader.numberOfPointRecords1_3;
+		for (i = 0; i < 5; i++) liberatedHeader.number_of_points_by_return[i] = imprisonedHeader.numberOfPointsByReturn1_3[i];
+	}
 	liberatedHeader.x_scale_factor = imprisonedHeader.xScaleFactor;
 	liberatedHeader.y_scale_factor = imprisonedHeader.yScaleFactor;
 	liberatedHeader.z_scale_factor = imprisonedHeader.zScaleFactor;
@@ -171,7 +190,11 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	liberatedHeader.max_z = imprisonedHeader.zMax;
 	liberatedHeader.min_z = imprisonedHeader.zMin;
 
-	liberatedHeader.start_of_waveform_data_packet_record = imprisonedHeader.startOfWaveformData;
+	if (imprisonedHeader.startOfWaveformData)
+	{
+		fwprintf(stderr, L"WARNING: '%s' seems to contain waveform data. ignoring waveforms ...\n", file_name_in);
+	}
+	liberatedHeader.start_of_waveform_data_packet_record = 0;
 	liberatedHeader.start_of_first_extended_variable_length_record = imprisonedHeader.startOfFirstEVLR;
 	liberatedHeader.number_of_extended_variable_length_records = imprisonedHeader.numberOfEVLRs;
 	liberatedHeader.extended_number_of_point_records = imprisonedHeader.numberOfPointRecords1_4;
@@ -190,7 +213,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 		{
 			if (imprisonedHeader.headerSize != 227)
 			{
-				fwprintf(stderr, L"Imprisoned header size is %d instead of 227 for imprisoned LAS %d.%d\n", imprisonedHeader.headerSize, imprisonedHeader.verMajor, imprisonedHeader.verMinor);
+				fprintf(stderr, "Imprisoned header size is %d instead of 227 for imprisoned LAS %d.%d\n", imprisonedHeader.headerSize, imprisonedHeader.verMajor, imprisonedHeader.verMinor);
 				return 1;
 			}
 		}
@@ -198,7 +221,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 		{
 			if (imprisonedHeader.headerSize != 235)
 			{
-				fwprintf(stderr, L"Imprisoned header size is %d instead of 235 for imprisoned LAS %d.%d\n", imprisonedHeader.headerSize, imprisonedHeader.verMajor, imprisonedHeader.verMinor);
+				fprintf(stderr, "Imprisoned header size is %d instead of 235 for imprisoned LAS %d.%d\n", imprisonedHeader.headerSize, imprisonedHeader.verMajor, imprisonedHeader.verMinor);
 				return 1;
 			}
 		}
@@ -206,46 +229,45 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 		{
 			if (imprisonedHeader.headerSize != 375)
 			{
-				fwprintf(stderr, L"Imprisoned header size is %d instead of 375 for imprisoned LAS %d.%d\n", imprisonedHeader.headerSize, imprisonedHeader.verMajor, imprisonedHeader.verMinor);
+				fprintf(stderr, "Imprisoned header size is %d instead of 375 for imprisoned LAS %d.%d\n", imprisonedHeader.headerSize, imprisonedHeader.verMajor, imprisonedHeader.verMinor);
 				return 1;
 			}
 		}
 		else
 		{
-			fwprintf(stderr, L"Imprisoned minor version of LAS %d.%d not known\n", imprisonedHeader.verMajor, imprisonedHeader.verMinor);
+			fprintf(stderr, "Imprisoned minor version of LAS %d.%d not known\n", imprisonedHeader.verMajor, imprisonedHeader.verMinor);
 		}
 	}
 	else
 	{
-		fwprintf(stderr, L"Imprisoned major version of LAS %d.%d not known\n", imprisonedHeader.verMajor, imprisonedHeader.verMinor);
+		fprintf(stderr, "Imprisoned major version of LAS %d.%d not known\n", imprisonedHeader.verMajor, imprisonedHeader.verMinor);
 		return 1;
 	}
+
+	// Create name of temp file to write VLRs, EVLRs and user data after header into
+
+	const int cSize = strlen(file_name_out) + 1;
+	wchar_t* file_name_temp = new wchar_t[cSize];
+	if (file_name_temp == 0)
+	{
+		fprintf(stderr, "Failed to allocate wchar_t[%d] for temp file name '%s'\n", cSize, file_name_out);
+		return 1;
+	}
+	mbstowcs(file_name_temp, file_name_out, cSize);
 
 	// Liberate the VLRs and the user data after header
 
 	if (imprisonedHeader.headerSize < imprisonedHeader.offsetToData)
 	{
-		// Create name of temp file to write VLRs and user data after header into
-
-		const int cSize = strlen(file_name_out) + 1;
-		wchar_t* file_name_temp = new wchar_t[cSize];
-		if (file_name_temp == 0)
-		{
-			fwprintf(stderr, L"Failed to allocate wchar_t[%d] for temp file name '%s'\n", cSize, file_name_out);
-			return 1;
-		}
-		mbstowcs(file_name_temp, file_name_out, cSize);
-
 		// Write VLRs and user data after header to temp file (no direct access via "LAZ clone" API)
 
 		unsigned long recordCount = 0;
 		UINT64 dataSize = 0;
 		hr = pLAZcloneReader->SaveVLRs(file_name_temp, recordCount, dataSize);
-		delete[] file_name_temp;
 		if (FAILED(hr))
 		{
 			reportLAZcloneError(pLAZcloneReader);
-			fwprintf(stderr, L"Failed to save VLRs and user data after header from \"LAZ clone\" to temp file '%s'.\n", file_name_out);
+			fprintf(stderr, "Failed to save VLRs and user data after header from \"LAZ clone\" to temp file '%s'.\n", file_name_out);
 			return hr;
 		}
 
@@ -253,7 +275,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 
 		if (imprisonedHeader.offsetToData != (dataSize + imprisonedHeader.headerSize))
 		{
-			fwprintf(stderr, L"Imprisoned header's offset to point data of %u does not match its header size of %u plus its VLRs and user data after header size of %u\n", imprisonedHeader.offsetToData, imprisonedHeader.headerSize, (laszip_U32)dataSize);
+			fprintf(stderr, "Imprisoned header's offset to point data of %u does not match its header size of %u plus its VLRs and user data after header size of %u\n", imprisonedHeader.offsetToData, imprisonedHeader.headerSize, (laszip_U32)dataSize);
 			return 1;
 		}
 
@@ -262,7 +284,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 		FILE* file_temp = fopen(file_name_out, "rb");
 		if (file_temp == 0)
 		{
-			fwprintf(stderr, L"Cannot open temp file '%s' with VLRs and user data after header liberated from \"LAZ clone\"");
+			fprintf(stderr, "Cannot open temp file '%s' with VLRs and user data after header liberated from \"LAZ clone\"", file_name_out);
 			return 1;
 		}
 
@@ -272,7 +294,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 			liberatedHeader.vlrs = (laszip_vlr*)malloc(sizeof(laszip_vlr)*imprisonedHeader.numberOfVLRs);
 			if (liberatedHeader.vlrs == 0)
 			{
-				fwprintf(stderr, L"Failed to allocate laszip_vlr[%d] for liberating VLRs\n", imprisonedHeader.numberOfVLRs);
+				fprintf(stderr, "Failed to allocate laszip_vlr[%d] for liberating VLRs\n", imprisonedHeader.numberOfVLRs);
 				return 1;
 			}
 			for (i = 0; i < imprisonedHeader.numberOfVLRs; i++)
@@ -283,7 +305,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 					liberatedHeader.vlrs[i].data = new laszip_U8[liberatedHeader.vlrs[i].record_length_after_header];
 					if (liberatedHeader.vlrs[i].data == 0)
 					{
-						fwprintf(stderr, L"Failed to allocate payload of %u bytes for VLR %d while liberating %d VLRs\n", liberatedHeader.vlrs[i].record_length_after_header, i, imprisonedHeader.numberOfVLRs);
+						fprintf(stderr, "Failed to allocate payload of %u bytes for VLR %d while liberating %d VLRs\n", liberatedHeader.vlrs[i].record_length_after_header, i, imprisonedHeader.numberOfVLRs);
 						return 1;
 					}
 					fread(liberatedHeader.vlrs[i].data, 1, liberatedHeader.vlrs[i].record_length_after_header, file_temp);
@@ -303,24 +325,26 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 			liberatedHeader.user_data_after_header = new laszip_U8[liberatedHeader.user_data_after_header_size];
 			if (liberatedHeader.user_data_after_header == 0)
 			{
-				fwprintf(stderr, L"Failed to allocate %u user data after header while liberating the LAS header\n", liberatedHeader.user_data_after_header_size);
+				fprintf(stderr, "Failed to allocate %u user data after header while liberating the LAS header\n", liberatedHeader.user_data_after_header_size);
 				return 1;
 			}
 			fread(liberatedHeader.user_data_after_header, 1, liberatedHeader.user_data_after_header_size, file_temp);
 		}
 		else if (dataTotal > dataSize)
 		{
-			fwprintf(stderr, L"Found corrupted %u instead of %u bytes while liberating %d VLRs\n", dataTotal, dataSize, imprisonedHeader.numberOfVLRs);
+			fprintf(stderr, "Found corrupted %I64u instead of %I64u bytes while liberating %d VLRs\n", dataTotal, dataSize, imprisonedHeader.numberOfVLRs);
 			return 1;
 		}
 
 		fclose(file_temp);
 		file_temp = 0;
 
+		// set header
+
 		if (laszip_set_header(freedomWriter, &liberatedHeader))
 		{
 			reportLASzipError(freedomWriter);
-			fwprintf(stderr, L"DLL ERROR: setting liberated LAS header\n");
+			fprintf(stderr, "DLL ERROR: setting liberated LAS header\n");
 			return 1;
 		}
 
@@ -347,6 +371,80 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 		}
 	}
 
+	// Liberate the EVLRs
+
+	if (imprisonedHeader.numberOfEVLRs)
+	{
+		// Write EVLRs to a temp file (no direct access via "LAZ clone" API)
+
+		UINT64 dataTotal = 0;
+
+		unsigned long recordCount = 0;
+		UINT64 dataSize = 0;
+		hr = pLAZcloneReader->SaveExtendedVLRs(file_name_temp, recordCount, dataSize);
+		if (FAILED(hr))
+		{
+			reportLAZcloneError(pLAZcloneReader);
+			fprintf(stderr, "Failed to save EVLRs from \"LAZ clone\" to temp file '%s'.\n", file_name_out);
+			return hr;
+		}
+
+		// Open temporary file for read
+
+		FILE* file_temp = fopen(file_name_out, "rb");
+		if (file_temp == 0)
+		{
+			fprintf(stderr, "Cannot open temp file '%s' with EVLRs liberated from \"LAZ clone\"", file_name_out);
+			return 1;
+		}
+
+		laszip_evlr evlr;
+		for (i = 0; i < imprisonedHeader.numberOfEVLRs; i++)
+		{
+			fread(&evlr, 60, 1, file_temp);
+			if (evlr.record_length_after_header)
+			{
+				evlr.data = new laszip_U8[(laszip_U32)(evlr.record_length_after_header)];
+				if (evlr.data == 0)
+				{
+					fprintf(stderr, "Failed to allocate payload of %I64d bytes for EVLR %d while liberating %d EVLRs\n", evlr.record_length_after_header, i, imprisonedHeader.numberOfEVLRs);
+					return 1;
+				}
+				fread(evlr.data, 1, (laszip_U32)(evlr.record_length_after_header), file_temp);
+			}
+			else
+			{
+				evlr.data = 0;
+			}
+
+			if (evlr.record_length_after_header > 65535)
+			{
+				fprintf(stderr, "WARNING: skipping EVLR '%.16s' with payload of %I64d while liberating %d EVLRs\n", evlr.user_id, evlr.record_length_after_header, imprisonedHeader.numberOfEVLRs);
+			}
+			else
+			{
+				if (laszip_add_vlr(freedomWriter, evlr.user_id, evlr.record_id, (laszip_U16)evlr.record_length_after_header, evlr.description, evlr.data))
+				{
+					reportLASzipError(freedomWriter);
+					fprintf(stderr, "DLL ERROR: adding small payload EVLR as VLR\n");
+					return 1;
+				}
+			}
+			if (evlr.data)
+			{
+				delete [] evlr.data;
+			}
+		}
+
+		fclose(file_temp);
+		file_temp = 0;
+	}
+
+	// delete the temporary file name
+
+	delete[] file_name_temp;
+	file_name_temp = 0;
+	
 	// Enable the creation of spatial indices with open source LAX
 
 	laszip_BOOL create = 1;
@@ -355,7 +453,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	if (laszip_create_spatial_index(freedomWriter, create, append))
 	{
 		reportLASzipError(freedomWriter);
-		fwprintf(stderr, L"DLL ERROR: signaling laszip writer to create spatial indexing information\n");
+		fprintf(stderr, "DLL ERROR: signaling laszip writer to create spatial indexing information\n");
 		return 1;
 	}
 
@@ -366,7 +464,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	if (laszip_preserve_generating_software(freedomWriter, preserve))
 	{
 		reportLASzipError(freedomWriter);
-		fwprintf(stderr, L"DLL ERROR : preserving generating software string in laszip writer\n");
+		fprintf(stderr, "DLL ERROR : preserving generating software string in laszip writer\n");
 		return 1;
 	}
 
@@ -378,7 +476,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	if (laszip_open_writer(freedomWriter, file_name_out, compress))
 	{
 		reportLASzipError(freedomWriter);
-		fwprintf(stderr, L"DLL ERROR : opening laszip writer for '%s'\n", file_name_out);
+		fwprintf(stderr, L"DLL ERROR : opening laszip writer for '%hs'\n", file_name_out);
 		return 1;
 	}
 
@@ -389,13 +487,13 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	if (laszip_get_point_pointer(freedomWriter, &liberatedPoint))
 	{
 		reportLASzipError(freedomWriter);
-		fwprintf(stderr, L"DLL ERROR: getting point pointer from laszip writer\n");
+		fprintf(stderr, "DLL ERROR: getting point pointer from laszip writer\n");
 		return 1;
 	}
 
-	// Liberate the LiDAR points in chunks of 1024
+	// Liberate the LiDAR points in chunks of 8192
 
-	static const long liberationIntervalSize = 1024;
+	static const long liberationIntervalSize = 8192;
 	long currentLiberation = liberationIntervalSize;
 
 	// Special handling for setting free any imprisoned extra bytes
@@ -408,7 +506,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 		imprisonedExtraBytes = new char[imprisonedExtraByteSize * liberationIntervalSize];
 		if (imprisonedExtraBytes)
 		{
-			fwprintf(stderr, L"Failed to allocate %u bytes for liberating %u extra bytes per point\n", imprisonedExtraByteSize * liberationIntervalSize, imprisonedExtraByteSize);
+			fprintf(stderr, "Failed to allocate %u bytes for liberating %u extra bytes per point\n", imprisonedExtraByteSize * liberationIntervalSize, imprisonedExtraByteSize);
 		}
 	}
 
@@ -456,10 +554,18 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 			liberatedPoint->Z = laszip_I32_QUANTIZE((imprisonedPoints[liberationID].z - imprisonedHeader.zOffset) / imprisonedHeader.zScaleFactor);
 			liberatedPoint->intensity = imprisonedPoints[liberationID].intensity;
 			liberatedPoint->return_number = (imprisonedPoints[liberationID].returnNumber & 7);
-			liberatedPoint->number_of_returns_of_given_pulse = (imprisonedPoints[liberationID].numberOfReturns & 7);
+			liberatedPoint->number_of_returns = (imprisonedPoints[liberationID].numberOfReturns & 7);
 			liberatedPoint->scan_direction_flag = imprisonedPoints[liberationID].scanDirectionFlag;
 			liberatedPoint->edge_of_flight_line = imprisonedPoints[liberationID].edgeOfFlightLine;
-			liberatedPoint->classification = (imprisonedPoints[liberationID].classCode & 31);
+			if (imprisonedPoints[liberationID].classCode > 31)
+			{
+				liberatedPoint->classification = 0;
+			}
+			else
+			{
+				liberatedPoint->classification = imprisonedPoints[liberationID].classCode;
+			}
+
 			liberatedPoint->synthetic_flag = imprisonedPoints[liberationID].bIsSyntheticPoint;
 			liberatedPoint->keypoint_flag = imprisonedPoints[liberationID].bIsKeyPoint;
 			liberatedPoint->withheld_flag = imprisonedPoints[liberationID].bIsWithheld;
@@ -468,15 +574,16 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 			liberatedPoint->point_source_ID = imprisonedPoints[liberationID].pointSourceID;
 			liberatedPoint->extended_scan_angle = laszip_I16_QUANTIZE(imprisonedPoints[liberationID].scanAngle / 0.006);
 			liberatedPoint->extended_scanner_channel = imprisonedPoints[liberationID].scannerChannel;
-			liberatedPoint->extended_classification_flags = ((laszip_U8)imprisonedPoints[liberationID].bIsOverlapPoint) << 3;
+			liberatedPoint->extended_classification_flags = ((((laszip_U8)imprisonedPoints[liberationID].bIsOverlapPoint) << 3) | (((laszip_U8)imprisonedPoints[liberationID].bIsWithheld) << 2) | (((laszip_U8)imprisonedPoints[liberationID].bIsKeyPoint) << 1) | ((laszip_U8)imprisonedPoints[liberationID].bIsSyntheticPoint));
 			liberatedPoint->extended_classification = imprisonedPoints[liberationID].classCode;
 			liberatedPoint->extended_return_number = imprisonedPoints[liberationID].returnNumber;
-			liberatedPoint->extended_number_of_returns_of_given_pulse = imprisonedPoints[liberationID].numberOfReturns;
+			liberatedPoint->extended_number_of_returns = imprisonedPoints[liberationID].numberOfReturns;
 			liberatedPoint->gps_time = imprisonedPoints[liberationID].gpsTime;
 			liberatedPoint->rgb[0] = imprisonedPoints[liberationID].red;
 			liberatedPoint->rgb[1] = imprisonedPoints[liberationID].green;
 			liberatedPoint->rgb[2] = imprisonedPoints[liberationID].blue;
 			liberatedPoint->rgb[3] = imprisonedPoints[liberationID].nir;
+
 			if (imprisonedExtraBytes)
 			{
 				memcpy(liberatedPoint->extra_bytes, &(imprisonedExtraBytes[liberationID*imprisonedExtraByteSize]), imprisonedExtraByteSize);
@@ -485,7 +592,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 			if (laszip_write_indexed_point(freedomWriter))
 			{
 				reportLASzipError(freedomWriter);
-				fwprintf(stderr, L"DLL ERROR: writing liberated point %u\n", (laszip_U32)count);
+				fprintf(stderr, "DLL ERROR: writing liberated point %I64d\n", count);
 				return 1;
 			}
 
@@ -500,7 +607,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 	if (laszip_close_writer(freedomWriter))
 	{
 		reportLASzipError(freedomWriter);
-		fwprintf(stderr, L"DLL ERROR: closing laszip writer\n");
+		fprintf(stderr, "DLL ERROR: closing laszip writer\n");
 		return 1;
 	}
 
@@ -508,7 +615,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 
 	if (laszip_destroy(freedomWriter))
 	{
-		fwprintf(stderr, L"DLL ERROR: destroying laszip writer\n");
+		fprintf(stderr, "DLL ERROR: destroying laszip writer\n");
 		return 1;
 	}
 
@@ -516,7 +623,7 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 
 	if (laszip_unload_dll())
 	{
-		fwprintf(stderr, L"DLL ERROR: failed to unload liberating DLL\n");
+		fprintf(stderr, "DLL ERROR: failed to unload liberating DLL\n");
 		return 1;
 	}
 
@@ -533,4 +640,3 @@ int lasliberate(const wchar_t* file_name_in, const char* file_name_out)
 
 	return hr;
 };
-

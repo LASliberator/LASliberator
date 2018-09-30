@@ -1,19 +1,19 @@
 /*
 ===============================================================================
 
-  FILE:  laszip_dll.h
-  
+  FILE:  laszip_api.h
+
   CONTENTS:
-  
+
     A simple DLL interface to LASzip
-  
+
   PROGRAMMERS:
-  
+
     martin.isenburg@rapidlasso.com  -  http://rapidlasso.com
-  
+
   COPYRIGHT:
-  
-    (c) 2007-2015, martin isenburg, rapidlasso - fast tools to catch reality
+
+    (c) 2007-2017, martin isenburg, rapidlasso - fast tools to catch reality
 
     This is free software; you can redistribute and/or modify it under the
     terms of the GNU Lesser General Licence as published by the Free Software
@@ -21,20 +21,40 @@
 
     This software is distributed WITHOUT ANY WARRANTY and without even the
     implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  
+
   CHANGE HISTORY:
-  
-    1 April 2015 -- adding exploitation and creation of spatial indexing information 
+
+    22 August 2017 -- Add version info.
+    4 August 2017 -- 'laszip_set_point_type_and_size()' as minimal setup for ostream writer
+    3 August 2017 -- new 'laszip_create_laszip_vlr()' gets VLR as C++ std::vector
+    29 July 2017 -- integrating minimal stream-based reading/writing into branch
+    20 July 2017 -- Andrew Bell adds support for stream-based reading/writing.
+    28 May 2017 -- support for "LAS 1.4 selective decompression" added into DLL API
+    25 April 2017 -- adding initial support for new "native LAS 1.4 extension"
+    8 January 2017 -- name change from 'laszip_dll.h' and integration Hobu's changes for Unix
+    7 January 2017 -- set reserved field in LASzip VLR from 0xAABB to 0x0
+    7 January 2017 -- make scan angle quantization in compatibility mode consistent with LIB
+    7 January 2017 -- compatibility mode *decompression* fix for points with waveforms
+    23 September 2015 -- correct update of bounding box and counters from inventory on closing
+    22 September 2015 -- bug fix for not overwriting description of pre-existing "extra bytes"
+    5 September 2015 -- "LAS 1.4 compatibility mode" now allows pre-existing "extra bytes"
+    3 August 2015 -- incompatible DLL change for QSI-sponsored "LAS 1.4 compatibility mode"
+    8 July 2015 -- adding support for NOAA-sponsored "LAS 1.4 compatibility mode"
+    1 April 2015 -- adding exploitation and creation of spatial indexing information
     8 August 2013 -- added laszip_get_coordinates() and laszip_set_coordinates()
     6 August 2013 -- added laszip_auto_offset() and laszip_check_for_integer_overflow()
     31 July 2013 -- added laszip_get_point_count() for FUSION integration
-    29 July 2013 -- reorganized to create an easy to use LASzip DLL 
-  
+    29 July 2013 -- reorganized to create an easy to use LASzip DLL
+
 ===============================================================================
 */
 
-#ifndef LASZIP_DLL_H
-#define LASZIP_DLL_H
+#ifndef LASZIP_API_H
+#define LASZIP_API_H
+
+#ifdef LASZIP_API_VERSION
+#include <laszip/laszip_api_version.h>
+#endif
 
 #ifdef _WIN32
 #   ifdef LASZIP_DYN_LINK
@@ -55,10 +75,13 @@ extern "C"
 {
 #endif
 
+#include <stdio.h>
+
 /*---------------------------------------------------------------------------*/
 /*--------------- DLL variables to pass data to/from LASzip -----------------*/
 /*---------------------------------------------------------------------------*/
 
+#ifdef _WIN32
 typedef int                laszip_BOOL;
 typedef unsigned char      laszip_U8;
 typedef unsigned short     laszip_U16;
@@ -72,6 +95,22 @@ typedef char               laszip_CHAR;
 typedef float              laszip_F32;
 typedef double             laszip_F64;
 typedef void*              laszip_POINTER;
+#else
+#include <stdint.h>
+typedef int                laszip_BOOL;
+typedef uint8_t            laszip_U8;
+typedef uint16_t           laszip_U16;
+typedef uint32_t           laszip_U32;
+typedef uint64_t           laszip_U64;
+typedef int8_t             laszip_I8;
+typedef int16_t            laszip_I16;
+typedef int32_t            laszip_I32;
+typedef int64_t            laszip_I64;
+typedef char               laszip_CHAR;
+typedef float              laszip_F32;
+typedef double             laszip_F64;
+typedef void*              laszip_POINTER;
+#endif
 
 typedef struct laszip_geokey
 {
@@ -84,7 +123,7 @@ typedef struct laszip_geokey
 typedef struct laszip_vlr
 {
   laszip_U16 reserved;
-  laszip_CHAR user_id[16]; 
+  laszip_CHAR user_id[16];
   laszip_U16 record_id;
   laszip_U16 record_length_after_header;
   laszip_CHAR description[32];
@@ -154,7 +193,7 @@ typedef struct laszip_point
   laszip_I32 Z;
   laszip_U16 intensity;
   laszip_U8 return_number : 3;
-  laszip_U8 number_of_returns_of_given_pulse : 3;
+  laszip_U8 number_of_returns : 3;
   laszip_U8 scan_direction_flag : 1;
   laszip_U8 edge_of_flight_line : 1;
   laszip_U8 classification : 5;
@@ -165,23 +204,54 @@ typedef struct laszip_point
   laszip_U8 user_data;
   laszip_U16 point_source_ID;
 
-  laszip_F64 gps_time;
-  laszip_U16 rgb[4];
-  laszip_U8 wave_packet[29];
-
   // LAS 1.4 only
+  laszip_I16 extended_scan_angle;
   laszip_U8 extended_point_type : 2;
   laszip_U8 extended_scanner_channel : 2;
   laszip_U8 extended_classification_flags : 4;
   laszip_U8 extended_classification;
   laszip_U8 extended_return_number : 4;
-  laszip_U8 extended_number_of_returns_of_given_pulse : 4;
-  laszip_I16 extended_scan_angle;
+  laszip_U8 extended_number_of_returns : 4;
+
+  // for 8 byte alignment of the GPS time
+  laszip_U8 dummy[7];
+
+  laszip_F64 gps_time;
+  laszip_U16 rgb[4];
+  laszip_U8 wave_packet[29];
 
   laszip_I32 num_extra_bytes;
   laszip_U8* extra_bytes;
 
 } laszip_point_struct;
+
+/*---------------------------------------------------------------------------*/
+/*------ DLL constants for selective decompression via LASzip DLL -----------*/
+/*---------------------------------------------------------------------------*/
+
+#define laszip_DECOMPRESS_SELECTIVE_ALL                0xFFFFFFFF
+
+#define laszip_DECOMPRESS_SELECTIVE_CHANNEL_RETURNS_XY 0x00000000
+#define laszip_DECOMPRESS_SELECTIVE_Z                  0x00000001
+#define laszip_DECOMPRESS_SELECTIVE_CLASSIFICATION     0x00000002
+#define laszip_DECOMPRESS_SELECTIVE_FLAGS              0x00000004
+#define laszip_DECOMPRESS_SELECTIVE_INTENSITY          0x00000008
+#define laszip_DECOMPRESS_SELECTIVE_SCAN_ANGLE         0x00000010
+#define laszip_DECOMPRESS_SELECTIVE_USER_DATA          0x00000020
+#define laszip_DECOMPRESS_SELECTIVE_POINT_SOURCE       0x00000040
+#define laszip_DECOMPRESS_SELECTIVE_GPS_TIME           0x00000080
+#define laszip_DECOMPRESS_SELECTIVE_RGB                0x00000100
+#define laszip_DECOMPRESS_SELECTIVE_NIR                0x00000200
+#define laszip_DECOMPRESS_SELECTIVE_WAVEPACKET         0x00000400
+#define laszip_DECOMPRESS_SELECTIVE_BYTE0              0x00010000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE1              0x00020000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE2              0x00040000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE3              0x00080000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE4              0x00100000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE5              0x00200000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE6              0x00400000
+#define laszip_DECOMPRESS_SELECTIVE_BYTE7              0x00800000
+#define laszip_DECOMPRESS_SELECTIVE_EXTRA_BYTES        0xFFFF0000
 
 /*---------------------------------------------------------------------------*/
 /*---------------- DLL functions to manage the LASzip DLL -------------------*/
@@ -265,6 +335,14 @@ laszip_set_header(
 
 /*---------------------------------------------------------------------------*/
 LASZIP_API laszip_I32
+laszip_set_point_type_and_size(
+    laszip_POINTER                     pointer
+    , laszip_U8                        point_type
+    , laszip_U16                       point_size
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
 laszip_check_for_integer_overflow(
     laszip_POINTER                     pointer
 );
@@ -322,9 +400,32 @@ laszip_set_geoascii_params(
 
 /*---------------------------------------------------------------------------*/
 LASZIP_API laszip_I32
+laszip_add_attribute(
+    laszip_POINTER                     pointer
+    , laszip_U32                       type
+    , const laszip_CHAR*               name
+    , const laszip_CHAR*               description
+    , laszip_F64                       scale
+    , laszip_F64                       offset
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
 laszip_add_vlr(
     laszip_POINTER                     pointer
-    , const laszip_vlr_struct*         vlr
+    , const laszip_CHAR*               user_id
+    , laszip_U16                       record_id
+    , laszip_U16                       record_length_after_header
+    , const laszip_CHAR*               description
+    , const laszip_U8*                 data
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_remove_vlr(
+    laszip_POINTER                     pointer
+    , const laszip_CHAR*               user_id
+    , laszip_U16                       record_id
 );
 
 /*---------------------------------------------------------------------------*/
@@ -340,6 +441,27 @@ LASZIP_API laszip_I32
 laszip_preserve_generating_software(
     laszip_POINTER                     pointer
     , const laszip_BOOL                preserve
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_request_native_extension(
+    laszip_POINTER                     pointer
+    , const laszip_BOOL                request
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_request_compatibility_mode(
+    laszip_POINTER                     pointer
+    , const laszip_BOOL                request
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_set_chunk_size(
+    laszip_POINTER                     pointer
+    , const laszip_U32                 chunk_size
 );
 
 /*---------------------------------------------------------------------------*/
@@ -379,6 +501,13 @@ LASZIP_API laszip_I32
 laszip_exploit_spatial_index(
     laszip_POINTER                     pointer
     , const laszip_BOOL                exploit
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_decompress_selective(
+    laszip_POINTER                     pointer
+    , const laszip_U32                 decompress_selective
 );
 
 /*---------------------------------------------------------------------------*/
@@ -451,7 +580,42 @@ laszip_unload_dll
 );
 
 #ifdef __cplusplus
-}
+} // extern "C"
+
+#if defined(_MSC_VER) && (_MSC_VER < 1300)
+#include <fstream.h>
+#else
+#include <istream>
+#include <fstream>
+using namespace std;
 #endif
 
-#endif /* LASZIP_DLL_H */
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_open_reader_stream(
+    laszip_POINTER                     pointer
+    , istream&                         stream
+    , laszip_BOOL*                     is_compressed
+);
+
+/*---------------------------------------------------------------------------*/
+LASZIP_API laszip_I32
+laszip_open_writer_stream(
+    laszip_POINTER                     pointer
+    , ostream&                         stream
+    , laszip_BOOL                      compress
+    , laszip_BOOL                      do_not_write_header
+);
+
+/*---------------------------------------------------------------------------*/
+// make LASzip VLR for point type and point size already specified earlier
+LASZIP_API laszip_I32
+laszip_create_laszip_vlr(
+    laszip_POINTER                     pointer
+    , laszip_U8**                      vlr
+    , laszip_U32*                      vlr_size
+);
+
+#endif  // __cplusplus
+
+#endif /* LASZIP_API_H */

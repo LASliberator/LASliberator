@@ -26,6 +26,7 @@
 
   CHANGE HISTORY:
 
+    25 September 2018 -- updated for compressing LAS 1.4 content
      3 April 2015 -- created to free LiDAR enslaved in ESRI's "LAZ clone"
 
 ===============================================================================
@@ -48,6 +49,15 @@ int main(int argc, char* argv[])
 		mbstowcs(file_name_in, argv[1], cSize);
 
 		int rc = lasliberate(file_name_in, argv[2]);
+
+		if (rc == 0)
+		{
+			fprintf(stderr, "SUCCESS: liberated '%s' from ESRI's closed format\n", argv[2]);
+		}
+		else
+		{
+			fprintf(stderr, "failed to liberate '%s' from ESRI's closed format\n", argv[2]);
+		}
 
 		delete file_name_in;
 

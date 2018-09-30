@@ -1,0 +1,11 @@
+e572las.exe
+e572las.opensdf
+e572las.sdf
+E57TestData
+Release
+Debug
+*~
+.vs
+*.pdb
+*.ilk
+ipch
