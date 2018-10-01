@@ -9,3 +9,4 @@ Debug
 *.pdb
 *.ilk
 ipch
+*.vcxproj.user
